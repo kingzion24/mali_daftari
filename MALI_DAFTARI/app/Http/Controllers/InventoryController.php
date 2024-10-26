@@ -2,46 +2,35 @@
 namespace App\Http\Controllers;
 
 use App\Models\Inventory;
+use App\Models\Product;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class InventoryController extends Controller
 {
-    // Ensure the user is authenticated
-    public function __construct()
+    public function inventoryshow()
     {
-        $this->middleware('auth');
+        // Retrieve all inventories with their related products
+        $inventories = Inventory::with('products')->get();
+
+        return view('inventory.index', compact('inventories'));
     }
 
-    // Display the logged-in user's inventories
-    public function index()
+    public function inventorystore(Request $request)
     {
-        $businessId = Auth::user()->business_id; // Assuming the user has a business_id column
-        $inventories = Inventory::where('business_id', $businessId)->with('products')->get();
-
-        return view('inventory', compact('inventories'));
-    }
-
-    // Store a new inventory for the logged-in user
-    public function store(Request $request)
-    {
-        $businessId = Auth::user()->business_id; // Get the business id of the logged-in user
-
-        // Validate incoming data
-        $request->validate([
+        $validated = $request->validate([
             'inventory_name' => 'required|string|max:255',
             'arrival_date' => 'required|date',
             'supplier_name' => 'required|string|max:255',
-            'description_about_new_inventory' => 'required|string|max:255',
+            'description_about_new_inventory' => 'required|string|max:1000',
             'total_cost' => 'required|numeric',
             'product_name.*' => 'required|string|max:255',
             'product_quantity.*' => 'required|integer',
             'product_price.*' => 'required|numeric',
         ]);
 
-        // Create the inventory
+        // Store the new inventory
         $inventory = Inventory::create([
-            'business_id' => $businessId,
+            'business_id' => auth()->user()->business_id, // Assuming each user has a business
             'inventory_name' => $request->inventory_name,
             'arrival_date' => $request->arrival_date,
             'supplier_name' => $request->supplier_name,
@@ -49,22 +38,17 @@ class InventoryController extends Controller
             'total_cost' => $request->total_cost,
         ]);
 
-        // Check if the inventory was created successfully
-        if ($inventory) {
-            // Add the products to the inventory
-            foreach ($request->product_name as $index => $productName) {
-                $inventory->products()->create([
-                    'product_name' => $productName,
-                    'product_price' => $request->product_price[$index],
-                    'stock_quantity' => $request->product_quantity[$index],
-                ]);
-            }
-
-            // Redirect back with success message
-            return redirect()->route('inventories.index')->with('success', 'Inventory added successfully!');
-        } else {
-            // Redirect back with error message if inventory creation failed
-            return redirect()->back()->with('error', 'Failed to add inventory.');
+        // Store the related products
+        foreach ($request->product_name as $index => $productName) 
+        {
+            Product::create([
+                'inventory_id' => $inventory->id,
+                'product_name' => $productName,
+                'product_price' => $request->product_price[$index],
+                'stock_quantity' => $request->product_quantity[$index],
+            ]);
         }
+
+        return redirect()->route('inventories.index')->with('success', 'Inventory added successfully!');
     }
 }
